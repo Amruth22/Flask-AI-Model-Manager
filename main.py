@@ -92,7 +92,7 @@ def demo_workflow():
         workflow_engine = WorkflowEngine(model_registry, db_path)
         
         # Get workflow template
-        steps = WorkflowTemplates.content_generation_workflow('gemini-2.0-flash-exp')
+        steps = WorkflowTemplates.content_generation_workflow('gemini-2.0-flash')
         
         print("\nWorkflow: Content Generation")
         print("Steps:")
@@ -160,8 +160,8 @@ def demo_ab_testing():
         print("\nCreating A/B experiment...")
         experiment_id = experiment_manager.create_experiment(
             name="Model Performance Test",
-            variant_a="gemini-2.0-flash-exp",
-            variant_b="gemini-2.0-flash-exp"  # Same model for demo
+            variant_a="gemini-2.0-flash",
+            variant_b="gemini-2.5-flash-lite"
         )
         
         print(f"Experiment created: ID {experiment_id}")
@@ -218,12 +218,12 @@ def demo_monitoring():
         
         for i in range(3):
             result = gemini.generate(f"Test prompt {i+1}", max_tokens=50)
-            model_id = model_registry.get_model_id('gemini-2.0-flash-exp')
+            model_id = model_registry.get_model_id('gemini-2.0-flash')
             metrics_tracker.track_metric(model_id, 'latency', result['latency'])
             metrics_tracker.track_metric(model_id, 'tokens', result['tokens'])
         
         # Get metrics
-        metrics = metrics_tracker.get_model_metrics('gemini-2.0-flash-exp')
+        metrics = metrics_tracker.get_model_metrics('gemini-2.0-flash')
         
         print(f"\nPerformance Metrics for Gemini:")
         print(f"   Total requests: {metrics['total_requests']}")
@@ -250,14 +250,14 @@ def demo_cost_tracking():
         # Generate some requests
         print("\nGenerating sample requests...")
         
-        model_id = model_registry.get_model_id('gemini-2.0-flash-exp')
-        
+        model_id = model_registry.get_model_id('gemini-2.0-flash')
+
         for i in range(5):
             result = gemini.generate(f"Cost test {i+1}", max_tokens=50)
             cost_tracker.track_cost(model_id, result['cost'], result['tokens'])
-        
+
         # Get cost data
-        costs = cost_tracker.get_model_costs('gemini-2.0-flash-exp')
+        costs = cost_tracker.get_model_costs('gemini-2.0-flash')
         total_cost = cost_tracker.get_total_cost()
         
         print(f"\nCost Analysis for Gemini:")

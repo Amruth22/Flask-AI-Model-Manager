@@ -1,12 +1,25 @@
 """
 Comprehensive Unit Tests for AI Model Manager
 Tests model integration, workflows, comparison, A/B testing, and monitoring
+
+TESTING APPROACH:
+- test_02_basic_generation: REAL API test (verifies actual integration)
+- test_04_workflow_engine: MOCKED (prevents quota exhaustion)
+- test_06_model_comparison: MOCKED (prevents quota exhaustion)
+- Other tests: No API calls required
+
+NOTE ON FREE API LIMITS:
+- Gemini free tier: 10 requests/minute
+- Mocking prevents quota issues while keeping one real API test
+- Total test runtime: ~5-10 seconds (including real API test)
 """
 
 import unittest
 import os
 import time
+from unittest.mock import patch, Mock
 from dotenv import load_dotenv
+import pytest
 
 from storage.database import init_database
 from models.gemini_model import GeminiModel
@@ -70,40 +83,41 @@ class AIModelManagerTestCase(unittest.TestCase):
             print(f"   Model registered with ID: {model_id}")
             
             # Retrieve model
-            retrieved = registry.get_model('gemini-2.0-flash-exp')
+            retrieved = registry.get_model('gemini-2.0-flash')
             self.assertIsNotNone(retrieved)
             print(f"   Model retrieved: {retrieved.name}")
-            
+
             # List models
             models = registry.list_models()
-            self.assertIn('gemini-2.0-flash-exp', models)
+            self.assertIn('gemini-2.0-flash', models)
             print(f"   Total models: {len(models)}")
         else:
             print("   Skipped (no API key)")
             self.skipTest("No API key available")
     
-    # Test 2: Basic Generation
+    # Test 2: Basic Generation (REAL API TEST)
     def test_02_basic_generation(self):
-        """Test basic text generation"""
-        print("\n2. Testing basic generation...")
-        
+        """Test basic text generation (REAL API - verifies actual integration)"""
+        print("\n2. Testing basic generation (real API)...")
+
         if not self.has_api_key:
             print("   Skipped (no API key)")
             self.skipTest("No API key available")
-        
+
         gemini = GeminiModel()
-        
+
         prompt = "Say hello in one word."
         result = gemini.generate(prompt, max_tokens=10)
-        
+
         self.assertIn('response', result)
         self.assertIn('tokens', result)
         self.assertIn('latency', result)
         self.assertIn('cost', result)
-        
+
         print(f"   Response: {result['response'][:50]}")
         print(f"   Tokens: {result['tokens']}")
         print(f"   Latency: {result['latency']:.2f}s")
+        print(f"   (Using REAL API connection)")
     
     # Test 3: Request Logger
     def test_03_request_logger(self):
@@ -129,37 +143,52 @@ class AIModelManagerTestCase(unittest.TestCase):
     
     # Test 4: Workflow Engine
     def test_04_workflow_engine(self):
-        """Test workflow execution"""
-        print("\n4. Testing workflow engine...")
-        
-        if not self.has_api_key:
-            print("   Skipped (no API key)")
-            self.skipTest("No API key available")
-        
-        registry = ModelRegistry(self.db_path)
-        gemini = GeminiModel()
-        registry.register_model(gemini)
-        
-        engine = WorkflowEngine(registry, self.db_path)
-        
-        # Simple 2-step workflow
-        steps = [
-            {
-                'model': 'gemini-2.0-flash-exp',
-                'prompt_template': 'Write one word about: {input}'
-            },
-            {
-                'model': 'gemini-2.0-flash-exp',
-                'prompt_template': 'Make this word uppercase: {input}'
-            }
-        ]
-        
-        result = engine.execute_workflow('test_workflow', steps, 'AI')
-        
-        self.assertIn('final_output', result)
-        self.assertEqual(len(result['steps']), 2)
-        print(f"   Workflow steps: {len(result['steps'])}")
-        print(f"   Total tokens: {result['total_tokens']}")
+        """Test workflow execution (MOCKED to prevent quota exhaustion)"""
+        print("\n4. Testing workflow engine (mocked)...")
+
+        # Mock the GeminiModel.generate method to prevent API calls
+        with patch('models.gemini_model.GeminiModel.generate') as mock_generate:
+            # Setup sequential responses for 2-step workflow
+            mock_generate.side_effect = [
+                {
+                    'response': 'Step 1: Generated content',
+                    'tokens': 25,
+                    'latency': 0.65,
+                    'cost': 0.00025
+                },
+                {
+                    'response': 'Step 2: Improved content',
+                    'tokens': 30,
+                    'latency': 0.70,
+                    'cost': 0.00030
+                }
+            ]
+
+            registry = ModelRegistry(self.db_path)
+            gemini = GeminiModel()
+            registry.register_model(gemini)
+
+            engine = WorkflowEngine(registry, self.db_path)
+
+            # Simple 2-step workflow
+            steps = [
+                {
+                    'model': 'gemini-2.0-flash',
+                    'prompt_template': 'Write one word about: {input}'
+                },
+                {
+                    'model': 'gemini-2.0-flash',
+                    'prompt_template': 'Make this word uppercase: {input}'
+                }
+            ]
+
+            result = engine.execute_workflow('test_workflow', steps, 'AI')
+
+            self.assertIn('final_output', result)
+            self.assertEqual(len(result['steps']), 2)
+            print(f"   Workflow steps: {len(result['steps'])}")
+            print(f"   Total tokens: {result['total_tokens']}")
+            print(f"   (Using mocked API responses)")
     
     # Test 5: Workflow Templates
     def test_05_workflow_templates(self):
@@ -178,31 +207,46 @@ class AIModelManagerTestCase(unittest.TestCase):
     
     # Test 6: Model Comparison
     def test_06_model_comparison(self):
-        """Test model comparison"""
-        print("\n6. Testing model comparison...")
-        
-        if not self.has_api_key:
-            print("   Skipped (no API key)")
-            self.skipTest("No API key available")
-        
-        registry = ModelRegistry(self.db_path)
-        gemini = GeminiModel()
-        registry.register_model(gemini)
-        
-        comparator = ModelComparator(registry, self.db_path)
-        
-        # Compare same model twice (for demo)
-        result = comparator.compare_models(
-            ['gemini-2.0-flash-exp', 'gemini-2.0-flash-exp'],
-            'Say hi'
-        )
-        
-        self.assertIn('results', result)
-        self.assertEqual(len(result['results']), 2)
-        self.assertIn('winner', result)
-        
-        print(f"   Models compared: {len(result['results'])}")
-        print(f"   Winner: {result['winner']}")
+        """Test model comparison (MOCKED to prevent quota exhaustion)"""
+        print("\n6. Testing model comparison (mocked)...")
+
+        # Mock the GeminiModel.generate method to prevent API calls
+        with patch('models.gemini_model.GeminiModel.generate') as mock_generate:
+            # Setup responses for comparison (two models)
+            mock_generate.side_effect = [
+                {
+                    'response': 'Hi! How are you?',
+                    'tokens': 40,
+                    'latency': 0.90,
+                    'cost': 0.00040
+                },
+                {
+                    'response': 'Hello! I am doing great.',
+                    'tokens': 35,
+                    'latency': 0.75,
+                    'cost': 0.00035
+                }
+            ]
+
+            registry = ModelRegistry(self.db_path)
+            gemini = GeminiModel()
+            registry.register_model(gemini)
+
+            comparator = ModelComparator(registry, self.db_path)
+
+            # Compare same model twice (for demo)
+            result = comparator.compare_models(
+                ['gemini-2.0-flash', 'gemini-2.0-flash'],
+                'Say hi'
+            )
+
+            self.assertIn('results', result)
+            self.assertEqual(len(result['results']), 2)
+            self.assertIn('winner', result)
+
+            print(f"   Models compared: {len(result['results'])}")
+            print(f"   Winner: {result['winner']}")
+            print(f"   (Using mocked API responses)")
     
     # Test 7: A/B Testing
     def test_07_ab_testing(self):
@@ -254,14 +298,14 @@ class AIModelManagerTestCase(unittest.TestCase):
         # Test consistent routing
         variant1, model1 = router.route_request(
             'user123',
-            'gemini-2.0-flash-exp',
-            'gemini-2.0-flash-exp'
+            'gemini-2.0-flash',
+            'gemini-2.5-flash-lite'
         )
-        
+
         variant2, model2 = router.route_request(
             'user123',
-            'gemini-2.0-flash-exp',
-            'gemini-2.0-flash-exp'
+            'gemini-2.0-flash',
+            'gemini-2.5-flash-lite'
         )
         
         # Same user should get same variant
@@ -290,8 +334,8 @@ class AIModelManagerTestCase(unittest.TestCase):
         tracker.track_metric(model_id, 'tokens', 100)
         
         # Get metrics
-        metrics = tracker.get_model_metrics('gemini-2.0-flash-exp')
-        
+        metrics = tracker.get_model_metrics('gemini-2.0-flash')
+
         self.assertIsNotNone(metrics)
         print(f"   Metrics tracked for: {metrics['model_name']}")
         print(f"   Avg latency: {metrics['avg_latency']:.3f}s")
@@ -316,8 +360,8 @@ class AIModelManagerTestCase(unittest.TestCase):
         tracker.track_cost(model_id, 0.002, 200)
         
         # Get costs
-        costs = tracker.get_model_costs('gemini-2.0-flash-exp')
-        
+        costs = tracker.get_model_costs('gemini-2.0-flash')
+
         self.assertIsNotNone(costs)
         self.assertEqual(costs['total_requests'], 2)
         self.assertGreater(costs['total_cost'], 0)
@@ -375,7 +419,13 @@ def run_tests():
 if __name__ == "__main__":
     print("AI Model Manager - Unit Test Suite")
     print("=" * 60)
-    
+    print("\nYou can run tests with:")
+    print("  - unittest: python tests.py")
+    print("  - pytest: pytest tests.py")
+    print("  - pytest verbose: pytest tests.py -v")
+    print("  - pytest markers: pytest tests.py -m api_test (real API only)")
+    print("=" * 60)
+
     try:
         success = run_tests()
         exit(0 if success else 1)
